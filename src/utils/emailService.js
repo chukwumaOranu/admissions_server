@@ -15,6 +15,25 @@ const envBool = (value, fallback = false) => {
   return ['true', '1', 'yes', 'on'].includes(String(value).toLowerCase());
 };
 
+const trimSetting = (value) => {
+  if (typeof value !== 'string') return value;
+  return value.trim();
+};
+
+const normalizeEmailSettings = (emailSettings) => {
+  if (!emailSettings) return emailSettings;
+
+  return {
+    ...emailSettings,
+    smtp_host: trimSetting(emailSettings.smtp_host),
+    smtp_username: trimSetting(emailSettings.smtp_username),
+    smtp_password: trimSetting(emailSettings.smtp_password),
+    from_name: trimSetting(emailSettings.from_name),
+    from_email: trimSetting(emailSettings.from_email),
+    reply_to_email: trimSetting(emailSettings.reply_to_email)
+  };
+};
+
 const buildEnvEmailSettings = () => {
   if (!process.env.SMTP_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     return null;
@@ -58,10 +77,15 @@ const initialize = async () => {
       return null;
     });
     const envSettings = buildEnvEmailSettings();
-    settings = {
+    const mergedSettings = {
       ...(dbSettings || {}),
       ...(envSettings || {})
     };
+    const passwordHadOuterWhitespace =
+      typeof mergedSettings.smtp_password === 'string' &&
+      mergedSettings.smtp_password !== mergedSettings.smtp_password.trim();
+
+    settings = normalizeEmailSettings(mergedSettings);
     
     if (!settings || Object.keys(settings).length === 0) {
       console.warn('⚠️ No email settings found. Provide SMTP_HOST, SMTP_PORT, SMTP_SECURE, EMAIL_USER, and EMAIL_PASS.');
@@ -79,7 +103,8 @@ const initialize = async () => {
       port: settings.smtp_port || 587,
       secure: !!settings.smtp_secure,
       user: settings.smtp_username,
-      passwordLength: settings.smtp_password?.length
+      passwordLength: settings.smtp_password?.length,
+      passwordHadOuterWhitespace
     });
 
     // Create transporter
