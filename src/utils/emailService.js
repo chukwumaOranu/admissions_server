@@ -78,7 +78,8 @@ const initialize = async () => {
       host: settings.smtp_host,
       port: settings.smtp_port || 587,
       secure: !!settings.smtp_secure,
-      user: settings.smtp_username
+      user: settings.smtp_username,
+      passwordLength: settings.smtp_password?.length
     });
 
     // Create transporter

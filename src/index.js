@@ -109,6 +109,11 @@ const getAllowedOrigins = () => {
 
 const allowedOrigins = getAllowedOrigins();
 
+const getCorsOrigin = (origin) => {
+  if (origin && allowedOrigins.includes(origin)) return origin;
+  return process.env.FRONTEND_URL || 'http://localhost:3000';
+};
+
 // CORS configuration
 const corsOptions = {
   origin: (origin, callback) => {
@@ -117,7 +122,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With']
 };
 
 app.use(cors(corsOptions));
@@ -126,7 +131,7 @@ app.use(cors(corsOptions));
 app.use('/uploads', (req, res, next) => {
   // Set CORS headers for static files
   const origin = req.headers.origin;
-  res.header('Access-Control-Allow-Origin', allowedOrigins.includes(origin) ? origin : (process.env.FRONTEND_URL || 'http://localhost:3000'));
+  res.header('Access-Control-Allow-Origin', getCorsOrigin(origin));
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
@@ -198,7 +203,7 @@ app.get('/api/health', (req, res) => {
 // Specific route for profile images with CORS
 app.get('/uploads/profiles/:filename', (req, res) => {
   // Set CORS headers
-  res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:3000');
+  res.header('Access-Control-Allow-Origin', getCorsOrigin(req.headers.origin));
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
