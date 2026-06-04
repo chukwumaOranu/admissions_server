@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const { findEmailSettings } = require('../models/settings-upload.model');
 const { findSchoolSettings } = require('../models/settings-upload.model');
 
@@ -31,6 +32,40 @@ const normalizeEmailSettings = (emailSettings) => {
     from_name: trimSetting(emailSettings.from_name),
     from_email: trimSetting(emailSettings.from_email),
     reply_to_email: trimSetting(emailSettings.reply_to_email)
+  };
+};
+
+const getSettingSource = (key, envSettings, dbSettings) => {
+  if (envSettings && envSettings[key] !== undefined && envSettings[key] !== null && envSettings[key] !== '') {
+    return 'env';
+  }
+  if (dbSettings && dbSettings[key] !== undefined && dbSettings[key] !== null && dbSettings[key] !== '') {
+    return 'database';
+  }
+  return 'missing';
+};
+
+const getSecretFingerprint = (value) => {
+  if (typeof value !== 'string') {
+    return {
+      length: 0,
+      sha256Prefix: null,
+      startsWithQuote: false,
+      endsWithQuote: false,
+      hasControlChars: false,
+      hasZeroWidthChars: false,
+      hasNonAsciiChars: false
+    };
+  }
+
+  return {
+    length: value.length,
+    sha256Prefix: crypto.createHash('sha256').update(value).digest('hex').slice(0, 12),
+    startsWithQuote: ['"', "'"].includes(value[0]),
+    endsWithQuote: ['"', "'"].includes(value[value.length - 1]),
+    hasControlChars: /[\u0000-\u001F\u007F]/.test(value),
+    hasZeroWidthChars: /[\u200B-\u200D\uFEFF]/.test(value),
+    hasNonAsciiChars: /[^\x00-\x7F]/.test(value)
   };
 };
 
@@ -86,6 +121,14 @@ const initialize = async () => {
       mergedSettings.smtp_password !== mergedSettings.smtp_password.trim();
 
     settings = normalizeEmailSettings(mergedSettings);
+    const passwordFingerprint = getSecretFingerprint(settings.smtp_password);
+    const settingSources = {
+      host: getSettingSource('smtp_host', envSettings, dbSettings),
+      port: getSettingSource('smtp_port', envSettings, dbSettings),
+      secure: getSettingSource('smtp_secure', envSettings, dbSettings),
+      user: getSettingSource('smtp_username', envSettings, dbSettings),
+      password: getSettingSource('smtp_password', envSettings, dbSettings)
+    };
     
     if (!settings || Object.keys(settings).length === 0) {
       console.warn('⚠️ No email settings found. Provide SMTP_HOST, SMTP_PORT, SMTP_SECURE, EMAIL_USER, and EMAIL_PASS.');
@@ -104,7 +147,9 @@ const initialize = async () => {
       secure: !!settings.smtp_secure,
       user: settings.smtp_username,
       passwordLength: settings.smtp_password?.length,
-      passwordHadOuterWhitespace
+      passwordHadOuterWhitespace,
+      passwordFingerprint,
+      settingSources
     });
 
     // Create transporter
