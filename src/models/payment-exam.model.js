@@ -123,13 +123,17 @@ const updatePaymentTransactionStatus = async (id, status, paystackResponse = nul
   try {
     const query = `
       UPDATE payment_transactions 
-      SET payment_status = ?, paystack_response = ?, paid_at = NOW(), updated_at = NOW()
+      SET payment_status = ?,
+          paystack_response = ?,
+          paid_at = CASE WHEN ? = 'success' THEN COALESCE(paid_at, NOW()) ELSE paid_at END,
+          updated_at = NOW()
       WHERE id = ?
     `;
 
     await executeQuery(query, [
       status,
       paystackResponse ? JSON.stringify(paystackResponse) : null,
+      status,
       id
     ]);
     

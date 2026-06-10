@@ -63,6 +63,22 @@ const ensureTransactionAccess = (req, transaction) => {
   return Number(transaction?.applicant_user_id) === Number(req.user.id);
 };
 
+const syncSuccessfulPayment = async (transaction, reference = transaction?.transaction_reference) => {
+  if (!transaction) return null;
+  return updatePaymentStatus(transaction.applicant_id, 'paid', reference);
+};
+
+const getLocalPaymentStatus = (paystackStatus) => {
+  if (paystackStatus === 'success') return 'success';
+  if (['failed', 'reversed'].includes(paystackStatus)) return 'failed';
+  return 'pending';
+};
+
+const paymentMatchesTransaction = (paymentData, transaction) => (
+  Number(paymentData?.amount) === Math.round(Number(transaction?.amount) * 100) &&
+  paymentData?.currency === transaction?.currency
+);
+
 // =====================================================
 // PAYMENT CONTROLLER FUNCTIONS
 // =====================================================
@@ -585,12 +601,16 @@ const verifyPaymentController = async (req, res) => {
 
     // If already verified, return existing data
     if (transaction.payment_status === 'success') {
+      await syncSuccessfulPayment(transaction, reference);
       return res.status(200).json({
         success: true,
         message: 'Payment already verified',
         data: {
           transaction,
           applicant_id: transaction.applicant_id, // Add applicant_id for frontend
+          payment_status: 'success',
+          amount_paid: Number(transaction.amount),
+          paid_at: transaction.paid_at,
           already_verified: true
         }
       });
@@ -612,14 +632,24 @@ const verifyPaymentController = async (req, res) => {
 
     const paymentData = paystackResponse.data.data;
 
-    // Determine payment status from Paystack response
-    let paymentStatus = 'failed';
+    const expectedAmountInKobo = Math.round(Number(transaction.amount) * 100);
     if (paymentData.status === 'success') {
-      paymentStatus = 'success';
-    } else if (paymentData.status === 'abandoned') {
-      paymentStatus = 'cancelled';
+      if (!paymentMatchesTransaction(paymentData, transaction)) {
+        console.error('❌ Paystack verification mismatch:', {
+          reference,
+          expectedAmountInKobo,
+          receivedAmountInKobo: paymentData.amount,
+          expectedCurrency: transaction.currency,
+          receivedCurrency: paymentData.currency
+        });
+        return res.status(409).json({
+          success: false,
+          message: 'Payment amount or currency does not match the application fee. Please contact support.'
+        });
+      }
     }
-    
+
+    const paymentStatus = getLocalPaymentStatus(paymentData.status);
 
     // Update transaction status in database
     const updatedTransaction = await updatePaymentTransactionStatus(
@@ -630,12 +660,7 @@ const verifyPaymentController = async (req, res) => {
 
     // If payment successful, update application payment status
     if (paymentStatus === 'success') {
-      try {
-        await updatePaymentStatus(transaction.applicant_id, 'paid', reference);
-      } catch (error) {
-        console.error('❌ Failed to update application payment status:', error.message);
-        // Don't fail the entire verification if this fails
-      }
+      await syncSuccessfulPayment(updatedTransaction, reference);
     }
 
     res.status(200).json({
@@ -669,8 +694,6 @@ const initializePaymentController = async (req, res) => {
   try {
     const {
       applicant_id,
-      amount,
-      email,
       callback_url,
       metadata: requestMetadata,
       subaccount: requestSubaccount,
@@ -684,10 +707,10 @@ const initializePaymentController = async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!applicant_id || !amount || !email) {
+    if (!applicant_id) {
       return res.status(400).json({
         success: false,
-        message: 'Applicant ID, amount, and email are required'
+        message: 'Applicant ID is required'
       });
     }
     const hasAccess = await ensureApplicantOwnership(req, applicant_id);
@@ -695,6 +718,36 @@ const initializePaymentController = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: 'You are not allowed to initialize payment for this applicant'
+      });
+    }
+
+    const applicant = await findApplicantById(applicant_id);
+    if (!applicant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found'
+      });
+    }
+
+    if (applicant.payment_status === 'paid') {
+      return res.status(409).json({
+        success: false,
+        message: 'This application has already been paid.'
+      });
+    }
+
+    const amount = Number(applicant.application_fee);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Application fee is not configured correctly.'
+      });
+    }
+    const email = applicant.applicant_email || applicant.email;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Application email is not available.'
       });
     }
 
@@ -723,8 +776,7 @@ const initializePaymentController = async (req, res) => {
     }
 
     const resolvedSubaccount = (
-      requestSubaccount ||
-      paystack_subaccount ||
+      (!isStudentUser(req) && (requestSubaccount || paystack_subaccount)) ||
       schoolCustomSettings.paystack_subaccount ||
       schoolCustomSettings.paystack_subaccount_code ||
       PAYSTACK_SUBACCOUNT ||
@@ -732,8 +784,7 @@ const initializePaymentController = async (req, res) => {
     );
 
     const resolvedSplitCode = (
-      requestSplitCode ||
-      paystack_split_code ||
+      (!isStudentUser(req) && (requestSplitCode || paystack_split_code)) ||
       schoolCustomSettings.paystack_split_code ||
       PAYSTACK_SPLIT_CODE ||
       null
@@ -746,15 +797,13 @@ const initializePaymentController = async (req, res) => {
     const effectiveSplitCode = routingMode === 'split' ? resolvedSplitCode : null;
 
     const resolvedBearer = normalizePaystackBearer(
-      requestBearer ||
-      paystack_bearer ||
+      (!isStudentUser(req) && (requestBearer || paystack_bearer)) ||
       schoolCustomSettings.paystack_bearer ||
       PAYSTACK_BEARER
     );
 
     const resolvedTransactionCharge = toPositiveIntegerOrNull(
-      requestTransactionCharge ??
-      paystack_transaction_charge ??
+      (!isStudentUser(req) ? (requestTransactionCharge ?? paystack_transaction_charge) : null) ??
       schoolCustomSettings.paystack_transaction_charge ??
       PAYSTACK_TRANSACTION_CHARGE
     );
@@ -795,9 +844,11 @@ const initializePaymentController = async (req, res) => {
       email,
       amount: amountInKobo, // Amount in kobo
       reference: transaction_reference,
-      callback_url: callback_url || `${process.env.FRONTEND_URL}/admin/dashboard/student-portal/payments/verify`,
       metadata
     };
+    if (callback_url) {
+      paystackPayload.callback_url = callback_url;
+    }
 
     // Paystack split/subaccount routing (optional)
     if (effectiveSubaccount) {
@@ -1004,13 +1055,24 @@ const paystackWebhookController = async (req, res) => {
       const transaction = await findPaymentTransactionByReference(reference);
       
       if (transaction) {
+        if (!paymentMatchesTransaction(event.data, transaction)) {
+          console.error('❌ Ignoring Paystack webhook with mismatched amount or currency:', {
+            reference,
+            expectedAmountInKobo: Math.round(Number(transaction.amount) * 100),
+            receivedAmountInKobo: amount,
+            expectedCurrency: transaction.currency,
+            receivedCurrency: event.data.currency
+          });
+          return res.status(200).send('Webhook received');
+        }
+
         // Update transaction status
         await updatePaymentTransactionStatus(
           transaction.id,
           'success',
           event.data
         );
-        await updatePaymentStatus(transaction.applicant_id, 'paid', reference);
+        await syncSuccessfulPayment(transaction, reference);
 
         console.log('✅ Payment webhook processed:', {
           reference,
