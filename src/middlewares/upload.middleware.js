@@ -1,14 +1,15 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { uploadRoot, uploadPath } = require('../utils/uploadPaths');
 
 // Ensure upload directories exist
 const uploadDirs = [
-  './uploads',
-  './uploads/profiles',
-  './uploads/documents',
-  './uploads/temp',
-  './uploads/school'
+  uploadRoot,
+  uploadPath('profiles'),
+  uploadPath('documents'),
+  uploadPath('temp'),
+  uploadPath('school')
 ];
 
 uploadDirs.forEach(dir => {
@@ -20,7 +21,7 @@ uploadDirs.forEach(dir => {
 // Configure storage for profile photos
 const profileStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, './uploads/temp'); // Upload to temp first, then process with Sharp
+    cb(null, uploadPath('temp')); // Upload to temp first, then process with Sharp
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -31,7 +32,7 @@ const profileStorage = multer.diskStorage({
 // Configure storage for school logos
 const schoolLogoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, './uploads/school');
+    cb(null, uploadPath('school'));
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -42,7 +43,7 @@ const schoolLogoStorage = multer.diskStorage({
 // Configure storage for favicons
 const faviconStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, './uploads/school');
+    cb(null, uploadPath('school'));
   },
   filename: (req, file, cb) => {
     // Always save as favicon.ico for consistency
@@ -53,7 +54,7 @@ const faviconStorage = multer.diskStorage({
 // Configure storage for documents (passport, certificates, etc.)
 const documentStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, './uploads/documents');
+    cb(null, uploadPath('documents'));
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);

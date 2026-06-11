@@ -23,6 +23,7 @@ for (const envPath of envCandidates) {
 
 // Import configurations
 const dbConfig = require('./configs/db.config');
+const { uploadRoot } = require('./utils/uploadPaths');
 
 // Import routes
 const userRoutes = require('./routes/user.route');
@@ -143,7 +144,7 @@ app.use('/uploads', (req, res, next) => {
   }
   
   next();
-}, express.static(path.join(__dirname, '../uploads')));
+}, express.static(uploadRoot));
 
 // Body parsing middleware
 app.use(express.json({
@@ -209,7 +210,7 @@ app.get('/uploads/profiles/:filename', (req, res) => {
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   
   // Serve the file
-  const filePath = path.join(__dirname, '../uploads/profiles', req.params.filename);
+  const filePath = path.join(uploadRoot, 'profiles', req.params.filename);
   res.sendFile(filePath, (err) => {
     if (err) {
       console.error('Error serving profile image:', err);

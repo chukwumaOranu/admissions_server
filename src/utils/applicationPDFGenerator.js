@@ -1,7 +1,7 @@
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 const fs = require('fs');
-const path = require('path');
+const { localPathFromUploadUrl } = require('./uploadPaths');
 
 const PAGE = {
   width: 595.28,
@@ -76,10 +76,8 @@ const parseCustomData = (customData) => {
 const resolveLocalFile = (filePath) => {
   if (!filePath || /^https?:\/\//i.test(filePath)) return null;
 
-  const normalized = String(filePath).replace(/^\/+/, '');
   const candidates = [
-    path.resolve(__dirname, '../../', normalized),
-    path.resolve(__dirname, '../../../', normalized)
+    localPathFromUploadUrl(filePath)
   ];
 
   return candidates.find(candidate => fs.existsSync(candidate)) || null;

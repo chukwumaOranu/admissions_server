@@ -238,6 +238,14 @@ router.post('/:id/passport-photo',
   ApplicantController.uploadPassportPhotoController
 );
 
+// Upload a document selected for a dynamic application field
+router.post('/:id/documents',
+  protectRoute,
+  uploadDocument,
+  handleMulterError,
+  ApplicantController.uploadApplicationDocumentController
+);
+
 // Delete passport photo
 router.delete('/:id/passport-photo', 
   protectRoute, 

@@ -465,7 +465,7 @@ const createPublicStudentRegistrationController = async (req, res) => {
       graduation_year,
       user_id: userCredentials.userId,
       profile_photo: null,
-      status: 'inactive',
+      status: 'active',
       custom_data: {
         ...normalizedCustomData,
         _public_registration: registrationMeta
@@ -484,16 +484,18 @@ const createPublicStudentRegistrationController = async (req, res) => {
             return;
           }
 
-          const emailResult = await emailService.sendPublicRegistrationReceivedEmail({
+          const emailResult = await emailService.sendWelcomeEmailToStudent({
             email,
             first_name,
             last_name,
-            student_id: student.student_id,
-            schema_display_name: schema.display_name || schema.schema_name
+            student_id: student.student_id
+          }, {
+            username: userCredentials.username,
+            password: userCredentials.password
           });
 
           if (!emailResult.success) {
-            console.warn('⚠️ Failed to send registration acknowledgement email:', emailResult.error || emailResult.message);
+            console.warn('⚠️ Failed to send student portal credentials email:', emailResult.error || emailResult.message);
           }
         } catch (emailError) {
           console.error('❌ Error sending registration acknowledgement email:', emailError.message);
@@ -503,12 +505,16 @@ const createPublicStudentRegistrationController = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Registration submitted successfully. Login account has been created and will be activated/communicated by the school admin.',
+      message: 'Registration submitted successfully. Your student portal account is ready.',
       data: {
         student_id: student.student_id,
         status: student.status,
         login_created: true,
-        email_queued: !!email
+        email_queued: !!email,
+        login_credentials: {
+          username: userCredentials.username,
+          password: userCredentials.password
+        }
       }
     });
   } catch (error) {
@@ -616,6 +622,20 @@ const updateStudentController = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
+
+    const existingStudent = await findStudentById(id);
+    if (!existingStudent) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+    if (Number(req.user.id) !== Number(existingStudent.user_id) && req.user.role !== 'Super Admin' && req.user.role !== 'Admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to update this student'
+      });
+    }
 
     const updated = await updateStudent(id, updateData);
 
@@ -829,7 +849,7 @@ const uploadProfilePhotoController = async (req, res) => {
     }
     
     // Check authorization (student can only upload their own photo)
-    if (req.user.id !== student.user_id && req.user.role !== 'Super Admin' && req.user.role !== 'Administrator') {
+    if (Number(req.user.id) !== Number(student.user_id) && req.user.role !== 'Super Admin' && req.user.role !== 'Admin') {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to update this photo'
@@ -882,7 +902,7 @@ const deleteProfilePhotoController = async (req, res) => {
     }
     
     // Check authorization
-    if (req.user.id !== student.user_id && req.user.role !== 'Super Admin' && req.user.role !== 'Admin') {
+    if (Number(req.user.id) !== Number(student.user_id) && req.user.role !== 'Super Admin' && req.user.role !== 'Admin') {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to delete this photo'

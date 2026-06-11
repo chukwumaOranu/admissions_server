@@ -1,9 +1,9 @@
 const fs = require('fs').promises;
-const path = require('path');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
 const { createCanvas, loadImage, registerFont } = require('canvas');
 const PDFDocument = require('pdfkit');
+const { localPathFromUploadUrl } = require('./uploadPaths');
 
 // =====================================================
 // EXAM CARD GENERATOR UTILITIES
@@ -38,7 +38,7 @@ const loadProfileImage = async (profilePhotoPath) => {
       return null;
     }
 
-    const fullPath = path.join(__dirname, '../uploads', profilePhotoPath);
+    const fullPath = localPathFromUploadUrl(profilePhotoPath);
     
     // Check if file exists
     try {

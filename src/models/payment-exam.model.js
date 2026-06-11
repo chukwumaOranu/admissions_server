@@ -121,21 +121,26 @@ const findPaymentTransactionsByUser = async (userId) => {
 // Update transaction status
 const updatePaymentTransactionStatus = async (id, status, paystackResponse = null) => {
   try {
-    const query = `
-      UPDATE payment_transactions 
-      SET payment_status = ?,
-          paystack_response = ?,
-          paid_at = CASE WHEN ? = 'success' THEN COALESCE(paid_at, NOW()) ELSE paid_at END,
-          updated_at = NOW()
-      WHERE id = ?
-    `;
+    const updates = [
+      'payment_status = ?',
+      'paystack_response = ?'
+    ];
+    const params = [
+      status,
+      paystackResponse ? JSON.stringify(paystackResponse) : null
+    ];
 
-    await executeQuery(query, [
-      status,
-      paystackResponse ? JSON.stringify(paystackResponse) : null,
-      status,
-      id
-    ]);
+    if (status === 'success') {
+      updates.push('paid_at = COALESCE(paid_at, NOW())');
+    }
+
+    updates.push('updated_at = NOW()');
+    params.push(id);
+
+    await executeQuery(
+      `UPDATE payment_transactions SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
     
     return await findPaymentTransactionById(id);
   } catch (error) {

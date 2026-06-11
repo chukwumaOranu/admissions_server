@@ -1,6 +1,6 @@
 const sharp = require('sharp');
-const path = require('path');
 const fs = require('fs');
+const { uploadPath, localPathFromUploadUrl } = require('./uploadPaths');
 
 /**
  * Process and optimize profile photo
@@ -12,7 +12,7 @@ const fs = require('fs');
 const processProfilePhoto = async (inputPath, studentId) => {
   try {
     const filename = `STUDENT_${studentId}_${Date.now()}.jpg`;
-    const outputPath = path.join('./uploads/profiles', filename);
+    const outputPath = uploadPath('profiles', filename);
     
     // Process image with Sharp
     await sharp(inputPath)
@@ -52,7 +52,7 @@ const processProfilePhoto = async (inputPath, studentId) => {
 const processPassportPhoto = async (inputPath, applicantId) => {
   try {
     const filename = `PASSPORT_${applicantId}_${Date.now()}.jpg`;
-    const outputPath = path.join('./uploads/documents', filename);
+    const outputPath = uploadPath('documents', filename);
     
     // Process image with Sharp (passport dimensions)
     await sharp(inputPath)
@@ -92,7 +92,7 @@ const processPassportPhoto = async (inputPath, applicantId) => {
 const processDocumentImage = async (inputPath, documentType, userId) => {
   try {
     const filename = `${documentType.toUpperCase()}_${userId}_${Date.now()}.jpg`;
-    const outputPath = path.join('./uploads/documents', filename);
+    const outputPath = uploadPath('documents', filename);
     
     // Process image with Sharp
     await sharp(inputPath)
@@ -131,7 +131,7 @@ const deletePhotoFile = (photoUrl) => {
     if (!photoUrl) return;
     
     // Convert URL to file path
-    const filePath = path.join('.', photoUrl);
+    const filePath = localPathFromUploadUrl(photoUrl);
     
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);

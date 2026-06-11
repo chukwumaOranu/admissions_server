@@ -1,8 +1,8 @@
 const fs = require('fs').promises;
-const path = require('path');
 const sharp = require('sharp');
 const QRCode = require('qrcode');
 const PDFDocument = require('pdfkit');
+const { localPathFromUploadUrl } = require('./uploadPaths');
 
 // =====================================================
 // SIMPLIFIED EXAM CARD GENERATOR (PDF-ONLY)
@@ -37,12 +37,7 @@ const loadProfileImage = async (profilePhotoPath) => {
       return null;
     }
 
-    // Remove the leading slash and 'uploads/' from profilePhotoPath if it exists
-    let cleanPath = profilePhotoPath.startsWith('/') ? profilePhotoPath.slice(1) : profilePhotoPath;
-    if (cleanPath.startsWith('uploads/')) {
-      cleanPath = cleanPath.replace('uploads/', '');
-    }
-    const fullPath = path.join(__dirname, '../../uploads', cleanPath);
+    const fullPath = localPathFromUploadUrl(profilePhotoPath);
     
     // Check if file exists
     try {

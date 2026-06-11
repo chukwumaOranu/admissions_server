@@ -4,8 +4,8 @@ const { findStudentById, findStudentByEmail } = require('../models/student.model
 const { findEntryDateById, createExamCard, findExamCardByApplicant } = require('../models/payment-exam.model');
 const { findSchoolSettings } = require('../models/settings-upload.model');
 const emailService = require('../utils/emailService');
-const path = require('path');
 const fs = require('fs').promises;
+const { uploadPath } = require('../utils/uploadPaths');
 
 // =====================================================
 // EXAM CARD GENERATION CONTROLLER
@@ -89,19 +89,19 @@ const generateExamCardController = async (req, res) => {
       const baseFilename = `exam-card-${applicant.application_id || applicant.id}-${timestamp}`;
       
       // Ensure directories exist
-      const examCardsDir = path.join(__dirname, '../../uploads/exam-cards');
-      const qrCodesDir = path.join(__dirname, '../../uploads/qr-codes');
+      const examCardsDir = uploadPath('exam-cards');
+      const qrCodesDir = uploadPath('qr-codes');
       await fs.mkdir(examCardsDir, { recursive: true });
       await fs.mkdir(qrCodesDir, { recursive: true });
       
       // Save PDF file
       const pdfPath = `uploads/exam-cards/${baseFilename}.pdf`;
-      const pdfFullPath = path.join(__dirname, '../../', pdfPath);
+      const pdfFullPath = uploadPath('exam-cards', `${baseFilename}.pdf`);
       await fs.writeFile(pdfFullPath, examCard.pdf);
       
       // Save QR code image
       const qrCodeImagePath = `uploads/qr-codes/${baseFilename}-qr.png`;
-      const qrCodeFullPath = path.join(__dirname, '../../', qrCodeImagePath);
+      const qrCodeFullPath = uploadPath('qr-codes', `${baseFilename}-qr.png`);
       const qrCodeBuffer = Buffer.from(examCard.qrCode.split(',')[1], 'base64');
       await fs.writeFile(qrCodeFullPath, qrCodeBuffer);
       

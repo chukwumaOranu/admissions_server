@@ -16,7 +16,8 @@ const {
   getApplicantStats,
   checkApplicantEmailExists,
   checkApplicationNumberExists,
-  getRecentApplications
+  getRecentApplications,
+  findApplicationSchemaFields
 } = require('../models/applicant.model');
 
 const { processPassportPhoto, deletePhotoFile } = require('../utils/imageProcessor.utils');
@@ -38,6 +39,17 @@ const isStudentUser = (req) => req.user?.role_name === 'Student';
 const canAccessApplicant = (req, applicant) => {
   if (!isStudentUser(req)) return true;
   return applicant && Number(applicant.user_id) === Number(req.user.id);
+};
+
+const parseCustomData = (customData) => {
+  if (!customData) return {};
+  if (typeof customData === 'object') return customData;
+  try {
+    const parsed = JSON.parse(customData);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
 };
 
 // Create new applicant
@@ -346,6 +358,35 @@ const submitApplicationController = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Application already submitted'
+      });
+    }
+
+    if (!existingApplicant.passport_photo && !existingApplicant.student_profile_photo) {
+      return res.status(400).json({
+        success: false,
+        message: 'A profile photo is required before submitting this application'
+      });
+    }
+
+    if (!existingApplicant.passport_photo && existingApplicant.student_profile_photo) {
+      await updateApplicant(id, { passport_photo: existingApplicant.student_profile_photo });
+    }
+
+    const customData = parseCustomData(existingApplicant.custom_data);
+    const schemaFields = await findApplicationSchemaFields(existingApplicant.schema_id);
+    const missingRequiredField = schemaFields.find((field) => {
+      if (!field.is_required) return false;
+      const value = customData[field.field_name];
+      if (field.field_type === 'file') {
+        return typeof value !== 'string' || !value.startsWith('/uploads/documents/');
+      }
+      if (Array.isArray(value)) return value.length === 0;
+      return value === undefined || value === null || String(value).trim() === '';
+    });
+    if (missingRequiredField) {
+      return res.status(400).json({
+        success: false,
+        message: `${missingRequiredField.field_label || missingRequiredField.field_name} is required before submitting`
       });
     }
 
@@ -766,6 +807,50 @@ const deletePassportPhotoController = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete passport photo',
+      error: error.message
+    });
+  }
+};
+
+// Upload a document for a dynamic application field
+const uploadApplicationDocumentController = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No document uploaded. Please select a file.'
+      });
+    }
+
+    const applicant = await findApplicantById(id);
+    if (!applicant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found'
+      });
+    }
+    if (!canAccessApplicant(req, applicant)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not allowed to upload documents for this application'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Application document uploaded successfully',
+      data: {
+        document_url: `/uploads/documents/${req.file.filename}`,
+        original_name: req.file.originalname
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading application document:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to upload application document',
       error: error.message
     });
   }
@@ -1235,6 +1320,7 @@ module.exports = {
   checkApplicationNumberExistsController,
   getRecentApplicationsController,
   uploadPassportPhotoController,
+  uploadApplicationDocumentController,
   deletePassportPhotoController,
   searchApplicantsController,
   getApplicantDashboardController,
